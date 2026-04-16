@@ -41,20 +41,29 @@ function renderShell() {
   if (!user) {
     renderAuthScreen(app, {
       onLogin: async (email, password) => {
-        const result = authService.login(email, password);
+        const result = await authService.login(email, password);
         if (!result.ok) return result;
+
         renderShell();
         router.go('/tasks');
         return result;
       },
+
       onRegister: async (name, email, password) => {
-        const result = authService.register({ name, email, password });
+        const result = await authService.register({
+          name,
+          email,
+          password
+        });
+
         if (!result.ok) return result;
+
         renderShell();
         router.go('/tasks');
         return result;
       }
     });
+
     return;
   }
 
@@ -72,14 +81,13 @@ function renderShell() {
 }
 
 async function boot() {
-  authService.seedDemoUserIfEmpty();
   renderShell();
 
   if ('serviceWorker' in navigator) {
     try {
       await navigator.serviceWorker.register('/src/serviceWorker.js');
-    } catch (error) {
-      console.warn('Service Worker registration failed:', error);
+    } catch (e) {
+      console.warn(e);
     }
   }
 }

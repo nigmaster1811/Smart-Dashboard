@@ -1,0 +1,14 @@
+{
+  "users": [
+    {
+      "id": "demo_user_1",
+      "email": "demo@smart.local",
+      "name": "Демо пользователь",
+      "password": "demo1234",
+      "totalPoints": 0
+    }
+  ],
+  "tasks": [],
+  "notes": [],
+  "activityLog": []
+}

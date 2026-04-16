@@ -1,6 +1,10 @@
-const USERS_KEY = 'smart-dashboard-users-v1';
-const SESSION_KEY = 'smart-dashboard-session-v1';
-const PTS_KEY = 'smart-dashboard-pts-v1';
+const USERS_KEY = "smart-dashboard-users-v1";
+const SESSION_KEY = "smart-dashboard-session-v1";
+const PTS_KEY = "smart-dashboard-pts-v1";
+
+/* =========================
+   DB HELPERS
+========================= */
 
 function loadUsers() {
   try {
@@ -22,28 +26,23 @@ function clearSession() {
   localStorage.removeItem(SESSION_KEY);
 }
 
-function getId() {
-  return globalThis.crypto?.randomUUID?.() ?? `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-function normalizeEmail(email) {
-  return String(email || '').trim().toLowerCase();
-}
-
-/* =========================
-   PTS STORAGE
-========================= */
-
-function loadPTS() {
+function getSession() {
   try {
-    return JSON.parse(localStorage.getItem(PTS_KEY)) ?? {};
+    return JSON.parse(localStorage.getItem(SESSION_KEY));
   } catch {
-    return {};
+    return null;
   }
 }
 
-function savePTS(data) {
-  localStorage.setItem(PTS_KEY, JSON.stringify(data));
+function getId() {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `id_${Date.now()}_${Math.random().toString(16).slice(2)}`
+  );
+}
+
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
 }
 
 /* =========================
@@ -51,20 +50,24 @@ function savePTS(data) {
 ========================= */
 
 export const authService = {
+  /* DEMO USER */
   seedDemoUserIfEmpty() {
     const users = loadUsers();
+
+    // ❗ важно: если есть хоть 1 пользователь — НЕ трогаем базу
     if (users.length > 0) return;
 
     const demo = {
       id: getId(),
-      name: 'Демо-пользователь',
-      email: 'demo@smart.local',
-      password: 'demo1234'
+      name: "Демо-пользователь",
+      email: "demo@smart.local",
+      password: "demo1234"
     };
 
     users.push(demo);
     saveUsers(users);
 
+    // не обязательно логинить автоматически, но можно
     saveSession({
       id: demo.id,
       name: demo.name,
@@ -72,20 +75,25 @@ export const authService = {
     });
   },
 
+  /* REGISTER */
   register({ name, email, password }) {
     const users = loadUsers();
     const safeEmail = normalizeEmail(email);
 
     if (!name || !safeEmail || !password) {
-      return { ok: false, error: 'Заполните имя, email и пароль.' };
+      return { ok: false, error: "Заполните все поля" };
     }
 
     if (password.length < 4) {
-      return { ok: false, error: 'Пароль должен быть не короче 4 символов.' };
+      return { ok: false, error: "Пароль слишком короткий" };
     }
 
-    if (users.some((u) => normalizeEmail(u.email) === safeEmail)) {
-      return { ok: false, error: 'Пользователь с таким email уже существует.' };
+    const exists = users.some(
+      (u) => normalizeEmail(u.email) === safeEmail
+    );
+
+    if (exists) {
+      return { ok: false, error: "Пользователь уже существует" };
     }
 
     const newUser = {
@@ -95,6 +103,7 @@ export const authService = {
       password
     };
 
+    // 🔥 ВАЖНО: добавляем в ТУ ЖЕ БАЗУ
     users.push(newUser);
     saveUsers(users);
 
@@ -104,9 +113,10 @@ export const authService = {
       email: newUser.email
     });
 
-    return { ok: true, user: { id: newUser.id, name: newUser.name, email: newUser.email } };
+    return { ok: true, user: newUser };
   },
 
+  /* LOGIN */
   login(email, password) {
     const users = loadUsers();
     const safeEmail = normalizeEmail(email);
@@ -116,7 +126,7 @@ export const authService = {
     );
 
     if (!user) {
-      return { ok: false, error: 'Неверный email или пароль.' };
+      return { ok: false, error: "Неверный email или пароль" };
     }
 
     const sessionUser = {
@@ -135,72 +145,44 @@ export const authService = {
   },
 
   getCurrentUser() {
-    try {
-      return JSON.parse(localStorage.getItem(SESSION_KEY));
-    } catch {
-      return null;
-    }
-  },
-
-  updateCurrentUserName(name) {
-    const current = this.getCurrentUser();
-    if (!current) return null;
-
-    const users = loadUsers();
-    const index = users.findIndex((u) => u.id === current.id);
-    if (index === -1) return null;
-
-    users[index].name = String(name).trim();
-    saveUsers(users);
-
-    const updated = { ...current, name: users[index].name };
-    saveSession(updated);
-
-    return updated;
+    return getSession();
   },
 
   /* =========================
-     PTS SYSTEM
+     PTS (НЕ ТРОГАЕМ)
   ========================= */
 
   getPTS() {
-    const session = this.getCurrentUser();
-    if (!session) return 0;
+    const user = getSession();
+    if (!user) return 0;
 
-    const pts = loadPTS();
-    return pts[session.id] ?? 0;
+    const pts = JSON.parse(localStorage.getItem(PTS_KEY)) || {};
+    return pts[user.id] ?? 0;
   },
 
   addPTS(amount) {
-    const session = this.getCurrentUser();
-    if (!session) return 0;
+    const user = getSession();
+    if (!user) return 0;
 
-    const pts = loadPTS();
+    const pts = JSON.parse(localStorage.getItem(PTS_KEY)) || {};
+    pts[user.id] = (pts[user.id] || 0) + amount;
 
-    if (!pts[session.id]) {
-      pts[session.id] = 0;
-    }
+    localStorage.setItem(PTS_KEY, JSON.stringify(pts));
+    window.dispatchEvent(new Event("ptsUpdated"));
 
-    pts[session.id] += amount;
-
-    savePTS(pts);
-
-    window.dispatchEvent(new Event('ptsUpdated'));
-
-    return pts[session.id];
+    return pts[user.id];
   },
 
   setPTS(amount) {
-    const session = this.getCurrentUser();
-    if (!session) return 0;
+    const user = getSession();
+    if (!user) return 0;
 
-    const pts = loadPTS();
-    pts[session.id] = amount;
+    const pts = JSON.parse(localStorage.getItem(PTS_KEY)) || {};
+    pts[user.id] = amount;
 
-    savePTS(pts);
+    localStorage.setItem(PTS_KEY, JSON.stringify(pts));
+    window.dispatchEvent(new Event("ptsUpdated"));
 
-    window.dispatchEvent(new Event('ptsUpdated'));
-
-    return pts[session.id];
+    return pts[user.id];
   }
 };
